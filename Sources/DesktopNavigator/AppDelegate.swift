@@ -1,128 +1,110 @@
 import AppKit
 
-final class SpaceTarget: NSObject {
-    let displayIndex: Int
-    let spaceIndex: Int
-    init(displayIndex: Int, spaceIndex: Int) {
-        self.displayIndex = displayIndex
-        self.spaceIndex = spaceIndex
-    }
-}
-
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private var dotsItem: NSStatusItem!
-    private var menuItem: NSStatusItem!
+    private var statusItem: NSStatusItem!
     private var controller: SpacesController!
     private let menu = NSMenu()
+    private var eventMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = SpacesController()
 
-        // Clickable dots — action mode only, no attached menu.
-        dotsItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = dotsItem.button {
-            button.action = #selector(dotClicked(_:))
-            button.target = self
-            button.sendAction(on: [.leftMouseDown])
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Note: deliberately NOT setting button.action. We handle clicks via the
+        // NSEvent local monitor below, which bypasses NSButton's tracking state
+        // machine. NSButton can otherwise get stuck in "tracking" after NSMenu's
+        // modal loop consumes a click on the same button, causing the next click
+        // to look like a drag continuation and silently no-op.
+
+        buildMenu()
+
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self,
+                  let button = self.statusItem.button,
+                  event.window === button.window else { return event }
+            self.handleClick(event, on: button)
+            return nil
         }
 
-        // Chevron — menu mode only. AppKit owns the entire interaction,
-        // so outside-click dismissal is consumed by NSMenu's tracking loop.
-        menuItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        menuItem.button?.image = DotsRenderer.renderChevron()
-        menu.delegate = self
-        menuItem.menu = menu
-
-        controller.onChange = { [weak self] in self?.renderDots() }
-        renderDots()
+        controller.onChange = { [weak self] in self?.render() }
+        render()
     }
 
-    private func renderDots() {
-        dotsItem.button?.image = DotsRenderer.renderDots(
+    private func render() {
+        statusItem.button?.image = DotsRenderer.render(
             displays: controller.displays,
             activeID: controller.activeSpaceID
         )
     }
 
-    @objc private func dotClicked(_ sender: Any?) {
-        guard let event = NSApp.currentEvent, let button = dotsItem.button else { return }
-        let pointInButton = button.convert(event.locationInWindow, from: nil)
-        let imageRect = button.cell?.imageRect(forBounds: button.bounds) ?? button.bounds
-        let xInImage = pointInButton.x - imageRect.minX
-        guard let hit = DotsRenderer.dotAt(x: xInImage, in: controller.displays) else { return }
-        controller.switchTo(displayIndex: hit.display, spaceIndex: hit.space)
-    }
-
-    // MARK: - Menu (chevron status item)
-
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        controller.refresh()
-        menu.removeAllItems()
-
-        let activeID = controller.activeSpaceID
-        let multipleDisplays = controller.displays.count > 1
-
-        for (di, display) in controller.displays.enumerated() {
-            if multipleDisplays {
-                let header = NSMenuItem(
-                    title: display.identifier == "Main" ? "Main Display" : "Display \(di + 1)",
-                    action: nil,
-                    keyEquivalent: ""
-                )
-                header.isEnabled = false
-                menu.addItem(header)
-            }
-            for (si, space) in display.spaces.enumerated() {
-                let title: String = (space.type == 4) ? "Fullscreen \(si + 1)" : "Desktop \(si + 1)"
-                let item = NSMenuItem(
-                    title: title,
-                    action: #selector(menuItemSelected(_:)),
-                    keyEquivalent: ""
-                )
-                item.target = self
-                item.representedObject = SpaceTarget(displayIndex: di, spaceIndex: si)
-                if space.id == activeID { item.state = .on }
-                menu.addItem(item)
-            }
-            if di < controller.displays.count - 1 { menu.addItem(.separator()) }
-        }
-
-        menu.addItem(.separator())
-
-        let spaceCount = controller.displays.first?.spaces.count ?? 0
-        if !HotkeySetup.areEnabled(count: spaceCount) {
-            let warn = NSMenuItem(title: "⚠︎ Switch-to-Desktop shortcuts not enabled", action: nil, keyEquivalent: "")
-            warn.isEnabled = false
-            menu.addItem(warn)
-            let enable = NSMenuItem(title: "Enable Switch-to-Desktop shortcuts", action: #selector(enableShortcutsAction), keyEquivalent: "")
-            enable.target = self
-            menu.addItem(enable)
-            let openPrefs = NSMenuItem(title: "Open System Settings…", action: #selector(openMissionControlPrefs), keyEquivalent: "")
-            openPrefs.target = self
-            menu.addItem(openPrefs)
-            menu.addItem(.separator())
-        }
-
+    private func buildMenu() {
+        menu.delegate = self
         let refresh = NSMenuItem(title: "Refresh", action: #selector(refreshAction), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
-        menu.addItem(NSMenuItem(title: "Quit Desktop Navigator", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(
+            title: "Quit Desktop Navigator",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        ))
     }
 
-    @objc private func menuItemSelected(_ sender: NSMenuItem) {
-        guard let target = sender.representedObject as? SpaceTarget else { return }
-        controller.switchTo(displayIndex: target.displayIndex, spaceIndex: target.spaceIndex)
-    }
-
-    @objc private func enableShortcutsAction() {
-        let count = max(controller.displays.first?.spaces.count ?? 0, 4)
-        HotkeySetup.enable(count: min(count, 9))
-    }
-
-    @objc private func openMissionControlPrefs() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.keyboard?Shortcuts") {
-            NSWorkspace.shared.open(url)
+    private func handleClick(_ event: NSEvent, on button: NSStatusBarButton) {
+        NSLog("DesktopNavigator: MONITOR type=\(event.type.rawValue) flags=0x\(String(event.modifierFlags.rawValue, radix: 16)) loc=\(event.locationInWindow)")
+        if event.type == .rightMouseDown {
+            showMenu(below: button)
+            return
         }
+        handleLeftClick(locationInWindow: event.locationInWindow, button: button, source: "monitor")
+    }
+
+    private func handleLeftClick(locationInWindow: NSPoint, button: NSStatusBarButton, source: String = "?") {
+        let pointInButton = button.convert(locationInWindow, from: nil)
+        let imageRect = button.cell?.imageRect(forBounds: button.bounds) ?? button.bounds
+        let xInImage = pointInButton.x - imageRect.minX
+        let hit = DotsRenderer.hitTest(x: xInImage, in: controller.displays)
+        NSLog("DesktopNavigator: HANDLE src=\(source) x=\(xInImage) hit=\(String(describing: hit))")
+        switch hit {
+        case .dot(let d, let s):
+            controller.switchTo(displayIndex: d, spaceIndex: s)
+        case .missionControl:
+            launchMissionControl()
+        case .none:
+            break
+        }
+    }
+
+    private func showMenu(below button: NSStatusBarButton) {
+        let location = NSPoint(x: 0, y: button.bounds.height + 4)
+        menu.popUp(positioning: nil, at: location, in: button)
+    }
+
+    /// Backup path for when NSMenu's tracking consumes the dismiss-click instead
+    /// of letting it reach our event monitor.
+    func menuDidClose(_ menu: NSMenu) {
+        guard let button = statusItem.button, let window = button.window else { return }
+        let cursorScreen = NSEvent.mouseLocation
+        let buttonRectInWindow = button.convert(button.bounds, to: nil)
+        let buttonScreenRect = NSRect(
+            x: window.frame.minX + buttonRectInWindow.minX,
+            y: window.frame.minY + buttonRectInWindow.minY,
+            width: buttonRectInWindow.width,
+            height: buttonRectInWindow.height
+        )
+        guard buttonScreenRect.contains(cursorScreen) else { return }
+        let locationInWindow = NSPoint(
+            x: cursorScreen.x - window.frame.minX,
+            y: cursorScreen.y - window.frame.minY
+        )
+        DispatchQueue.main.async { [weak self] in
+            self?.handleLeftClick(locationInWindow: locationInWindow, button: button, source: "menuDidClose")
+        }
+    }
+
+    private func launchMissionControl() {
+        let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     @objc private func refreshAction() { controller.refresh() }
