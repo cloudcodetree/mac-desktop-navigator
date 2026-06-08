@@ -61,15 +61,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func buildMenu() {
         menu.delegate = self
+
+        let about = NSMenuItem(title: "About Desktop Navigator", action: #selector(showAboutPanel), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
+        menu.addItem(.separator())
+
         let refresh = NSMenuItem(title: "Refresh", action: #selector(refreshAction), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
         menu.addItem(.separator())
+
         menu.addItem(NSMenuItem(
             title: "Quit Desktop Navigator",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         ))
+    }
+
+    @objc private func showAboutPanel() {
+        // We're LSUIElement (no Dock icon) — the standard About panel only
+        // pops up if we explicitly activate ourselves first.
+        NSApp.activate(ignoringOtherApps: true)
+        let credits = NSAttributedString(
+            string: "A menu bar app for switching between Mission Control Spaces.\nhttps://github.com/cloudcodetree/mac-desktop-navigator",
+            attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
+        )
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
 
     private func handleClick(_ event: NSEvent, on button: NSStatusBarButton) {
@@ -92,11 +110,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch hit {
         case .dot(let d, let s):
             controller.switchTo(displayIndex: d, spaceIndex: s)
+        case .screenshot:
+            takeScreenshot()
         case .missionControl:
             launchMissionControl()
         case .none:
             break
         }
+    }
+
+    /// Invokes macOS's interactive selection screenshot tool, routing the
+    /// captured image to the clipboard. Equivalent to Shift+Ctrl+Cmd+4 but
+    /// doesn't depend on that system shortcut being enabled, and never races
+    /// with whatever app currently has key focus.
+    private func takeScreenshot() {
+        let task = Process()
+        task.launchPath = "/usr/sbin/screencapture"
+        task.arguments = ["-i", "-c"]
+        try? task.run()
     }
 
     private func showMenu(below button: NSStatusBarButton) {

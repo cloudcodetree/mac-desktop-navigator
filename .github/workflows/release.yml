@@ -1,0 +1,118 @@
+name: Release
+
+# Build, package, and attach the .app bundle as a release artifact when a
+# version tag is pushed (e.g., `v0.1.0`, `v1.2.3`).
+#
+# This workflow runs on macOS so it has access to swift, codesign, and
+# the Apple toolchain. For self-signed builds it produces an artifact you
+# can re-sign locally; for Developer ID notarized builds, uncomment the
+# signing/notarization blocks below.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse version from tag
+        id: version
+        env:
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$GITHUB_REF' does not match expected vX.Y.Z[-suffix] format" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$VERSION" > VERSION
+          echo "Building v$VERSION"
+
+      # --- Signing & Notarization (commented out — uncomment when you have
+      # an Apple Developer ID and store the secrets in the repo settings) ---
+      #
+      # - name: Import Developer ID certificate
+      #   env:
+      #     CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}
+      #     CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+      #     KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      #   run: |
+      #     printf '%s' "$CERT_BASE64" | base64 --decode > /tmp/cert.p12
+      #     security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+      #     security default-keychain -s build.keychain
+      #     security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+      #     security import /tmp/cert.p12 -k build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+      #     security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+      - name: Build bundle (ad-hoc signed)
+        env:
+          # For Developer ID builds, change to:
+          #   "Developer ID Application: Your Name (TEAMID)"
+          SIGN_IDENTITY: '-'
+        run: ./scripts/build-bundle.sh
+
+      # --- Notarization (commented out — uncomment alongside the signing
+      # block above when you have an Apple Developer ID) ---
+      #
+      # - name: Notarize
+      #   env:
+      #     APPLE_ID: ${{ secrets.APPLE_ID }}
+      #     APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      #     APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      #   run: |
+      #     ditto -c -k --sequesterRsrc --keepParent build/DesktopNavigator.app build/notarize.zip
+      #     xcrun notarytool submit build/notarize.zip \
+      #       --apple-id "$APPLE_ID" \
+      #       --team-id "$APPLE_TEAM_ID" \
+      #       --password "$APPLE_APP_PASSWORD" \
+      #       --wait
+      #     xcrun stapler staple build/DesktopNavigator.app
+
+      - name: Package as zip
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd build
+          ditto -c -k --sequesterRsrc --keepParent \
+            DesktopNavigator.app \
+            "DesktopNavigator-${VERSION}.zip"
+
+      - name: Compute SHA256 (for cask)
+        id: sha
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          SHA=$(shasum -a 256 "build/DesktopNavigator-${VERSION}.zip" | awk '{print $1}')
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "SHA256: $SHA"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/DesktopNavigator-${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            **Homebrew** (once the cask is published):
+            ```
+            brew install --cask desktop-navigator
+            ```
+
+            **Manual**: download the zip, unzip, drag `DesktopNavigator.app` to `/Applications`, run.
+
+            ## SHA256
+            `${{ steps.sha.outputs.sha }}`
+
+            This zip is **ad-hoc signed** — macOS will warn on first launch unless this build was notarized (see workflow).

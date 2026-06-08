@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+
+    <key>CFBundleExecutable</key>
+    <string>DesktopNavigator</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>com.cloudcodetree.DesktopNavigator</string>
+
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <key>CFBundleName</key>
+    <string>DesktopNavigator</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>Desktop Navigator</string>
+
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>__VERSION__</string>
+
+    <key>CFBundleVersion</key>
+    <string>__BUILD__</string>
+
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+
+    <!-- Menu bar app: no dock icon, no app menu. -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Chris Harper. MIT licensed.</string>
+
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- TCC permission prompts use these strings instead of generic Apple text. -->
+    <key>NSAccessibilityUsageDescription</key>
+    <string>Desktop Navigator needs Accessibility permission to send the keystroke that switches between desktops when you click a rectangle in the menu bar.</string>
+
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Desktop Navigator uses AppleEvents to launch Mission Control when you click the expand button.</string>
+</dict>
+</plist>
