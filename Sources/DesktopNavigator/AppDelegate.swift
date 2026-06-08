@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
@@ -26,8 +27,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return nil
         }
 
-        controller.onChange = { [weak self] in self?.render() }
+        controller.onChange = { [weak self] in
+            self?.render()
+            self?.ensureShortcutsForCurrentSpaces()
+        }
         render()
+        ensureShortcutsForCurrentSpaces()
+        promptForAccessibilityIfNeeded()
+    }
+
+    /// Posting Ctrl+N via CGEvent requires Accessibility permission. If we don't
+    /// have it, prompt the user once with the system dialog that links straight
+    /// to the right settings pane. Already-trusted processes get no prompt.
+    private func promptForAccessibilityIfNeeded() {
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        _ = AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+    }
+
+    /// Bind any missing "Switch to Desktop N" shortcuts for desktops the user
+    /// currently has. Cheap when nothing's missing (one plist read); silently
+    /// self-heals when the user adds a new desktop while the app is running.
+    private func ensureShortcutsForCurrentSpaces() {
+        let count = controller.displays.first?.spaces.count ?? 0
+        HotkeySetup.ensureEnabled(forSpaceCount: count)
     }
 
     private func render() {
@@ -51,20 +73,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleClick(_ event: NSEvent, on button: NSStatusBarButton) {
-        NSLog("DesktopNavigator: MONITOR type=\(event.type.rawValue) flags=0x\(String(event.modifierFlags.rawValue, radix: 16)) loc=\(event.locationInWindow)")
+        // Pull fresh state before processing the click — the polling timer covers
+        // most cases, but a refresh here closes any remaining gap between desktop
+        // changes and the user's first click.
+        controller.refresh()
         if event.type == .rightMouseDown {
             showMenu(below: button)
             return
         }
-        handleLeftClick(locationInWindow: event.locationInWindow, button: button, source: "monitor")
+        handleLeftClick(locationInWindow: event.locationInWindow, button: button)
     }
 
-    private func handleLeftClick(locationInWindow: NSPoint, button: NSStatusBarButton, source: String = "?") {
+    private func handleLeftClick(locationInWindow: NSPoint, button: NSStatusBarButton) {
         let pointInButton = button.convert(locationInWindow, from: nil)
         let imageRect = button.cell?.imageRect(forBounds: button.bounds) ?? button.bounds
         let xInImage = pointInButton.x - imageRect.minX
         let hit = DotsRenderer.hitTest(x: xInImage, in: controller.displays)
-        NSLog("DesktopNavigator: HANDLE src=\(source) x=\(xInImage) hit=\(String(describing: hit))")
         switch hit {
         case .dot(let d, let s):
             controller.switchTo(displayIndex: d, spaceIndex: s)
@@ -98,7 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             y: cursorScreen.y - window.frame.minY
         )
         DispatchQueue.main.async { [weak self] in
-            self?.handleLeftClick(locationInWindow: locationInWindow, button: button, source: "menuDidClose")
+            self?.handleLeftClick(locationInWindow: locationInWindow, button: button)
         }
     }
 

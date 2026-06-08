@@ -8,9 +8,10 @@ enum DotsRenderer {
     static let sidePadding: CGFloat = 4
     static let height: CGFloat = 22
 
-    static let arrowGap: CGFloat = 8
-    static let arrowWidth: CGFloat = 11
-    static let arrowHeight: CGFloat = 8
+    static let expandGap: CGFloat = 8
+    static let expandWidth: CGFloat = 11
+    static let expandHeight: CGFloat = 11
+    static let expandTipSize: CGFloat = 5   // size of each corner arrowhead
 
     enum Hit {
         case dot(display: Int, space: Int)
@@ -19,7 +20,7 @@ enum DotsRenderer {
 
     private static func size(for displays: [DisplayInfo]) -> NSSize {
         let totalDots = displays.reduce(0) { $0 + $1.spaces.count }
-        let trailing = arrowGap + arrowWidth
+        let trailing = expandGap + expandWidth
         guard totalDots > 0 else { return NSSize(width: 14 + trailing, height: height) }
         let dotsWidth = CGFloat(totalDots) * dotWidth
         let withinDisplaySpacing = displays.reduce(0.0) { acc, d in
@@ -55,16 +56,30 @@ enum DotsRenderer {
                 if di < displays.count - 1 { x += displaySpacing }
             }
 
-            // Up-arrow (Mission Control trigger) at the trailing end.
-            let ax = x + arrowGap
-            let ay = (size.height - arrowHeight) / 2
-            let arrow = NSBezierPath()
-            arrow.move(to: NSPoint(x: ax, y: ay))
-            arrow.line(to: NSPoint(x: ax + arrowWidth, y: ay))
-            arrow.line(to: NSPoint(x: ax + arrowWidth / 2, y: ay + arrowHeight))
-            arrow.close()
+            // "Expand" icon (Mission Control trigger) at the trailing end: two
+            // arrowheads on opposite corners pointing outward, the standard
+            // macOS visual for full-screen / expand actions.
+            let ax = x + expandGap
+            let ay = (size.height - expandHeight) / 2
+            let t = expandTipSize
+
+            // Top-left arrowhead (points up-left)
+            let topLeft = NSBezierPath()
+            topLeft.move(to: NSPoint(x: ax, y: ay + expandHeight))
+            topLeft.line(to: NSPoint(x: ax + t, y: ay + expandHeight))
+            topLeft.line(to: NSPoint(x: ax, y: ay + expandHeight - t))
+            topLeft.close()
+
+            // Bottom-right arrowhead (points down-right)
+            let botRight = NSBezierPath()
+            botRight.move(to: NSPoint(x: ax + expandWidth, y: ay))
+            botRight.line(to: NSPoint(x: ax + expandWidth - t, y: ay))
+            botRight.line(to: NSPoint(x: ax + expandWidth, y: ay + t))
+            botRight.close()
+
             NSColor.black.setFill()
-            arrow.fill()
+            topLeft.fill()
+            botRight.fill()
             return true
         }
         image.isTemplate = true
@@ -83,8 +98,8 @@ enum DotsRenderer {
             }
             if di < displays.count - 1 { cursor += displaySpacing }
         }
-        // Anything past the last dot lands in the up-arrow zone (forgiving hit area).
-        if x >= cursor + arrowGap / 2 {
+        // Anything past the last dot lands in the expand-icon zone (forgiving hit area).
+        if x >= cursor + expandGap / 2 {
             return .missionControl
         }
         return nil
