@@ -21,7 +21,7 @@
 
 cask "desktop-navigator" do
   version "0.1.0"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "3da55436fce885050dd8e050e0bb19487ab6c48089cecbf0ace07d137e95a2ce"
 
   url "https://github.com/cloudcodetree/mac-desktop-navigator/releases/download/v#{version}/DesktopNavigator-#{version}.zip"
   name "Desktop Navigator"
