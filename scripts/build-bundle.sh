@@ -36,12 +36,13 @@ sed -e "s/__VERSION__/$VERSION/g" \
 # Copy privacy manifest
 cp App/PrivacyInfo.xcprivacy "$APP/Contents/Resources/"
 
-# Copy icon if it exists (otherwise the bundle uses macOS's generic app icon)
-if [ -f App/AppIcon.icns ]; then
-    cp App/AppIcon.icns "$APP/Contents/Resources/"
-else
-    echo "==> NOTE: App/AppIcon.icns missing — bundle will use macOS generic icon."
+# Icon is generated rather than committed (it's a build artifact). Regenerate
+# it if missing; users can replace App/AppIcon.icns with a hand-designed one.
+if [ ! -f App/AppIcon.icns ]; then
+    echo "==> Generating placeholder icon (first build only)..."
+    ./scripts/generate-icon.sh >/dev/null
 fi
+cp App/AppIcon.icns "$APP/Contents/Resources/"
 
 echo "==> Signing with: $SIGN_IDENTITY"
 codesign --force --sign "$SIGN_IDENTITY" \
