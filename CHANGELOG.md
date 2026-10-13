@@ -8,10 +8,20 @@ release is cut.
 ## [Unreleased]
 
 ### Added
+- Drag-to-select screenshot picker drawn by the app itself. The camera button
+  no longer relies on `screencapture -i`, whose overlay and crosshair some
+  remote desktop tools (macOS Screen Sharing among them) cannot show or drive.
+- Single-instance guard: launching a second copy quits the older one, so
+  `launchctl kickstart`, `install.sh`, and double-clicking a fresh build never
+  leave two menu bar items.
+- Unit tests (`swift test`) for the picker geometry and the instance rule.
 - Proper `.app` bundle scaffolding with `Info.plist`, privacy manifest, and
   build scripts.
 - `MIT LICENSE`, README, and CHANGELOG.
 - About panel that displays the version, build, and homepage.
+
+### Changed
+- Menu bar actions fire on mouse-up instead of mouse-down.
 
 ## [0.1.0] — 2026-06-08
 

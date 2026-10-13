@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var controller: SpacesController!
     private let menu = NSMenu()
     private var eventMonitor: Any?
+    private let regionPicker = RegionPicker()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = SpacesController()
@@ -19,10 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         buildMenu()
 
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .rightMouseDown]) { [weak self] event in
             guard let self,
                   let button = self.statusItem.button,
                   event.window === button.window else { return event }
+            // Swallow the mouse-down so NSButton never starts tracking, and act
+            // on mouse-up so the click is completely over before anything we
+            // launch (screencapture's selection UI) can receive its tail end.
+            if event.type == .leftMouseDown { return nil }
             self.handleClick(event, on: button)
             return nil
         }
@@ -119,15 +124,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Invokes macOS's interactive selection screenshot tool, routing the
-    /// captured image to the clipboard. Equivalent to Shift+Ctrl+Cmd+4 but
-    /// doesn't depend on that system shortcut being enabled, and never races
-    /// with whatever app currently has key focus.
+    /// Drag-to-select screenshot to the clipboard, using our own overlay rather
+    /// than `screencapture -i` so it also works over remote desktop sessions
+    /// that cannot show or drive the system picker.
     private func takeScreenshot() {
-        let task = Process()
-        task.launchPath = "/usr/sbin/screencapture"
-        task.arguments = ["-i", "-c"]
-        try? task.run()
+        regionPicker.begin { rect in
+            guard let rect else { return }
+            RegionPicker.capture(cocoaRect: rect)
+        }
     }
 
     private func showMenu(below button: NSStatusBarButton) {

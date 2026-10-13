@@ -8,6 +8,11 @@ let package = Package(
         .executableTarget(
             name: "DesktopNavigator",
             path: "Sources/DesktopNavigator"
+        ),
+        .testTarget(
+            name: "DesktopNavigatorTests",
+            dependencies: ["DesktopNavigator"],
+            path: "Tests/DesktopNavigatorTests"
         )
     ]
 )
